@@ -581,7 +581,7 @@ public class SwitcherServiceTests
 
         Assert.Equal("A", File.ReadAllText(Path.Combine(root, "aha", "state.json")));
         Assert.Equal(1, fake.Launches);
-        Assert.False(fake.IsRunning() == false); // Launch 后应为运行中
+        Assert.True(fake.IsRunning()); // Launch 后应处于运行中
     }
 
     [Fact]
