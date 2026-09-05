@@ -36,21 +36,30 @@ TraeWork CN 桌面客户端（进程名 `TRAE SOLO CN.exe`，窗口名 "TraeWork
 
 ## 4. 可行性开放项（Phase 0：登录态载体定位）
 
+> ✅ **Phase 0 已于 2026-09-06 真机完成，方案确认可行，不降级。**
+>
+> 实测过程：账号 A 完全退出 → `snap 1`（109952 文件）→ 验证码登录账号 B →
+> 完全退出 → `snap 2`（109951 文件）→ `diff 1` 得 **41 个变化文件**。
+>
+> 判读结论：
+> - 41 个变化中绝大多数为运行噪声：`monitor\parfait\*`（时间戳遥测）、
+>   `ModularData\*`（日志/会话 DB）、`ahanet\*`/`aha\*`、`solo-lite\thumbnail-assets\*`、
+>   `*.LOG`/`LOG.old`、`QuotaManager`、`languagepacks.json` 等。
+> - 登录态载体集中于 **7 个小文件**，已写入 `%APPDATA%\TraeSwitch\settings.json` 的
+>   `Fingerprint`：`Local Storage\leveldb\000588.log`、
+>   `Partitions\trae-webview\Local Storage\leveldb\000043.log`（trae-webview 为网页授权分区，
+>   token 最可能落点）、`Partitions\trae-webview\Preferences`、
+>   `Network\Network Persistent State`、`Local Storage\config.db`、
+>   `User\globalStorage\storage.json`、`Session Storage\000237.log`。
+> - `machineid`、`Local State`、`Network\Cookies*` 均未变化 → 登录态不在这些位置。
+> - 对应开放项 1、2：载体为"每账号一小撮小文件、其余共享"，冷切换只需替换上述少量文件，
+>   无需整目录对拷。
+> - 对应开放项 3（同机多账号风控）待 2 账号 Pilot（≥1 周）验证；
+>   对应开放项 4（`--user-data-dir` 参数）仍未验证，保持开放。
+
 切换是否成立取决于"登录态载体"能否被整份备份并在账号间替换。**Phase 0 的目标是定位载体**，
 方法为"切号前后文件差异对比"。由于实验需要完全退出客户端、而用户正用该客户端与本工具对话，
 Phase 0 顺延到用户某次"本来就准备切号/结束对话"时执行（一次性只读脚本，约 2 分钟出结论）。
-
-Phase 0 要回答四个问题：
-
-1. 随账号切换而变化的文件集合（载体）具体落在 `%APPDATA%\TRAE SOLO CN\` 哪些路径：
-   候选 `aha\`、`ahanet\`、`Local Storage\`、`Network\Cookies*`、`machineid`、
-   `Local State`、`Preferences`、`CachedProfilesData` 等，也可能是上述多个的组合。
-2. 载体是否为"每账号一小撮文件、其余共享"——决定冷切换只需替换个别文件，而非整目录对拷。
-3. 同机多账号是否触发设备/风控限制（参考 TraeCheckin 的 9074 设备号风控经验；
-   用小规模真实账号验证，不做压测）。
-4. 顺带验证客户端是否接受 `--user-data-dir` 启动参数（若接受，追加可选"Profile 隔离"模式）。
-
-Phase 0 产物：一份"载体指纹"记录（路径集合 + 每文件常规大小/哈希特征），保存到工具配置中。
 
 > 若 Phase 0 证明载体不可整份替换（例如 token 与设备指纹强绑定、替换后立即被服务端吊销），
 > 则本工具降级为"半自动引导"：只负责按账号名切换客户端数据目录并提示重新登录，仍优于手输 OTP 的次数不可承诺。

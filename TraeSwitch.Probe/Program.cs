@@ -55,24 +55,45 @@ static class Program
 
     static void Diff(string tag)
     {
-        var f1 = Path.Combine(SnapDir, $"snap{tag}.txt");
-        var f2 = Path.Combine(SnapDir, $"snap{tag + 1}.txt");
-        if (!File.Exists(f1) || !File.Exists(f2))
+        if (!int.TryParse(tag, out var n))
         {
-            Console.WriteLine("缺少快照文件，请先按顺序执行 snap 1 与 snap 2。");
+            Console.WriteLine("diff 需要一个数字序号，例如：TraeSwitch.Probe diff 1");
             return;
         }
-        var a = File.ReadAllLines(f1).ToHashSet();
-        var b = File.ReadAllLines(f2).ToHashSet();
-        var keys = new HashSet<string>(a.Concat(b).Select(line => line.Split('|')[0]));
-        var changed = keys
-            .Where(k => !a.Any(l => l.StartsWith(k + "|")) || !b.Any(l => l.StartsWith(k + "|"))
-                        || a.First(l => l.StartsWith(k + "|")) != b.First(l => l.StartsWith(k + "|")))
-            .OrderBy(x => x)
-            .ToList();
+        var f1 = Path.Combine(SnapDir, $"snap{n}.txt");
+        var f2 = Path.Combine(SnapDir, $"snap{n + 1}.txt");
+        if (!File.Exists(f1) || !File.Exists(f2))
+        {
+            Console.WriteLine($"缺少快照文件：{f1} 或 {f2}，请先按顺序执行 snap {n} 与 snap {n + 1}。");
+            return;
+        }
+        var a = IndexLines(f1);
+        var b = IndexLines(f2);
+        var changed = new List<string>();
+        foreach (var (rel, line) in b)
+        {
+            if (!a.TryGetValue(rel, out var old) || old != line) changed.Add(rel);
+        }
+        foreach (var rel in a.Keys)
+        {
+            if (!b.ContainsKey(rel)) changed.Add(rel);
+        }
+        changed.Sort(StringComparer.OrdinalIgnoreCase);
         Console.WriteLine($"共 {changed.Count} 个文件在切号前后变化：");
         foreach (var rel in changed)
             Console.WriteLine("  " + rel);
         Console.WriteLine("结论：把这些相对路径填到 TraeSwitch settings.json 的 Fingerprint 后，即可在 UI 中启用真实切换。");
+    }
+
+    private static Dictionary<string, string> IndexLines(string path)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in File.ReadLines(path))
+        {
+            int sep = line.IndexOf('|');
+            if (sep < 0) continue;
+            map[line[..sep]] = line;
+        }
+        return map;
     }
 }
