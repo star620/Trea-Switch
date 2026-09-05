@@ -79,12 +79,17 @@ public class MainForm : Form
         return row;
     }
 
-    private Button MakeBtn(string text, Action onClick) => new()
+    private Button MakeBtn(string text, Action onClick)
     {
-        Text = text, AutoSize = true, Height = 34,
-        BackColor = AppStyle.Accent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat,
-        Margin = new Padding(0, 6, 10, 6)
-    };
+        var btn = new Button
+        {
+            Text = text, AutoSize = true, Height = 34,
+            BackColor = AppStyle.Accent, ForeColor = Color.White, FlatStyle = FlatStyle.Flat,
+            Margin = new Padding(0, 6, 10, 6)
+        };
+        btn.Click += (_, _) => onClick();
+        return btn;
+    }
 
     private void RefreshAccounts()
     {
@@ -96,12 +101,25 @@ public class MainForm : Form
 
     private async Task DoBackupAsync()
     {
+        var client = new ClientController(_settings.Data.ProcessName, _settings.Data.ClientExe);
+        if (client.IsRunning())
+        {
+            Log("无法建档：TRAE SOLO CN 正在运行，登录态文件被占用。请先完全退出客户端（托盘也退出），再点「建档」。");
+            return;
+        }
         var name = PromptAccount("建档：输入当前登录的账号名");
         if (name == null) return;
-        if (!_settings.Data.Accounts.Contains(name)) _settings.Data.Accounts.Add(name);
-        await _vault.BackupAsync(name, _settings.Data.Fingerprint);
-        _settings.Save();
-        Log($"已备份账号 {name}（载体文件 {_settings.Data.Fingerprint.Count} 个）。提示：请确认当前客户端登录的确实是该账号。");
+        try
+        {
+            if (!_settings.Data.Accounts.Contains(name)) _settings.Data.Accounts.Add(name);
+            await _vault.BackupAsync(name, _settings.Data.Fingerprint);
+            _settings.Save();
+            Log($"已备份账号 {name}（载体条目 {_settings.Data.Fingerprint.Count} 个）。提示：请确认刚才退出前客户端登录的确实是该账号。");
+        }
+        catch (Exception ex)
+        {
+            Log("建档失败：" + ex.Message);
+        }
         RefreshAccounts();
     }
 
@@ -132,10 +150,23 @@ public class MainForm : Form
     {
         var name = _accounts.SelectedItem as string;
         if (name == null) { Log("请先选中账号。"); return; }
-        var ok = await _vault.VerifyAsync(name, _settings.Data.Fingerprint);
-        Log(ok
-            ? $"账号 {name} vault 与 live 一致。"
-            : $"账号 {name} vault 校验失败：客户端可能改写了登录态，请重新登录该账号后点「建档」更新备份。");
+        var client = new ClientController(_settings.Data.ProcessName, _settings.Data.ClientExe);
+        if (client.IsRunning())
+        {
+            Log("无法校验：TRAE SOLO CN 正在运行，登录态文件被占用。请先完全退出客户端再点「校验」。");
+            return;
+        }
+        try
+        {
+            var ok = await _vault.VerifyAsync(name, _settings.Data.Fingerprint);
+            Log(ok
+                ? $"账号 {name} vault 与 live 一致。"
+                : $"账号 {name} vault 校验失败：客户端可能改写了登录态，请重新登录该账号后点「建档」更新备份。");
+        }
+        catch (Exception ex)
+        {
+            Log("校验失败：" + ex.Message);
+        }
     }
 
     private void DoDelete()

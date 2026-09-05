@@ -2,7 +2,7 @@ namespace TraeSwitch.Services;
 
 /// <summary>
 /// 冷切换编排：结束进程 → 当前 live 载体做临时回滚快照 → 写回目标账号 vault → 拉起客户端。
-/// restore/launch 任一步失败则回滚到切换前内容。
+/// restore/launch 任一步失败则回滚到切换前内容。Fingerprint 条目支持文件或目录。
 /// </summary>
 public sealed class SwitcherService(string rootDir, VaultService vault, IClientController client)
 {
@@ -11,16 +11,10 @@ public sealed class SwitcherService(string rootDir, VaultService vault, IClientC
         var rels = fingerprint.ToArray();
         client.KillAll();
 
-        // 1) 当前 live 状态快照到临时目录（回滚用）
+        // 1) 当前 live 状态快照到临时目录（回滚用），目录条目整树快照
         var rollback = Path.Combine(Path.GetTempPath(), "traeswitch_rollback_" + Guid.NewGuid().ToString("N"));
         foreach (var rel in rels)
-        {
-            var src = Path.Combine(rootDir, rel);
-            if (!File.Exists(src)) continue;
-            var dst = Path.Combine(rollback, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
-            File.Copy(src, dst, overwrite: true);
-        }
+            VaultService.OverwriteEntry(rootDir, rollback, rel);
 
         try
         {
@@ -53,12 +47,6 @@ public sealed class SwitcherService(string rootDir, VaultService vault, IClientC
     private void Rollback(string rollback, string[] rels)
     {
         foreach (var rel in rels)
-        {
-            var src = Path.Combine(rollback, rel);
-            if (!File.Exists(src)) continue;
-            var dst = Path.Combine(rootDir, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
-            File.Copy(src, dst, overwrite: true);
-        }
+            VaultService.OverwriteEntry(rollback, rootDir, rel);
     }
 }

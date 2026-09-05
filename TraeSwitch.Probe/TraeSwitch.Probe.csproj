@@ -12,4 +12,10 @@
     <ProjectReference Include="..\TraeSwitch.csproj" />
   </ItemGroup>
 
+  <!-- Probe 引用了主工程，构建时会把主 exe 复制到本目录，易与主 UI 混淆。
+       这里在构建后删除该副本，只保留 Probe 自己需要的 dll。 -->
+  <Target Name="RemoveStrayMainExe" AfterTargets="Build">
+    <Delete Files="$(OutputPath)TraeSwitch.exe" />
+  </Target>
+
 </Project>
