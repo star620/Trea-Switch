@@ -1,3 +1,5 @@
+using TraeSwitch.Services;
+
 namespace TraeSwitch;
 
 static class Program
@@ -6,6 +8,7 @@ static class Program
     static void Main()
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        var settings = new SettingsStore(CarrierDefaults.SettingsDir);
+        Application.Run(new MainForm(settings));
     }
 }
