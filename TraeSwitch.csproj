@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TraeSwitch</RootNamespace>
+    <AssemblyName>TraeSwitch</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <OutputPath>bin\TraeSwitch\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!-- 排除测试子项目与探针工程，避免默认 glob 把它们的源码编进主程序 -->
+  <ItemGroup>
+    <Compile Remove="TraeSwitch.Tests\**" />
+    <Compile Remove="TraeSwitch.Probe\**" />
+    <EmbeddedResource Remove="TraeSwitch.Tests\**" />
+    <EmbeddedResource Remove="TraeSwitch.Probe\**" />
+    <Content Remove="TraeSwitch.Tests\**" />
+    <Content Remove="TraeSwitch.Probe\**" />
+    <None Remove="TraeSwitch.Tests\**" />
+    <None Remove="TraeSwitch.Probe\**" />
+  </ItemGroup>
+
+</Project>
