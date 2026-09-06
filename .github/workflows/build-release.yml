@@ -6,6 +6,10 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# 创建 GitHub Release 需要写权限（默认 GITHUB_TOKEN 是只读，会 403 失败）
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
