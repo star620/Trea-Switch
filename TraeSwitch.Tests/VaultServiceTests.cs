@@ -89,4 +89,116 @@ public class VaultServiceTests : IDisposable
         Assert.Equal("SESS-A", File.ReadAllText(Path.Combine(_root, "sess", "000001.log")));
         Assert.Equal("CFG-A", File.ReadAllText(Path.Combine(_root, "cfg.db")));
     }
+
+    [Fact]
+    public async Task 建档返回文件数_GetInfo返回时间与数量()
+    {
+        WriteRoot("sess\\000001.log", "SESS-A");
+        WriteRoot("sess\\000002.log", "SESS-A2");
+        WriteRoot("cfg.db", "CFG-A");
+        var svc = new VaultService(_root, _vault);
+
+        var count = await svc.BackupAsync("A", new[] { "sess", "cfg.db" });
+        Assert.Equal(3, count);
+
+        var info = svc.GetInfo("A");
+        Assert.NotNull(info);
+        Assert.Equal(3, info!.EntryCount);
+        Assert.NotNull(info.CreatedLocal);
+        Assert.Null(svc.GetInfo("NOPE"));
+    }
+
+    [Fact]
+    public async Task MatchesLive_未建档返回false_live与快照一致为true_篡改后为false()
+    {
+        WriteRoot("sess\\000001.log", "SESS-A");
+        WriteRoot("cfg.db", "CFG-A");
+        var fp = new[] { "sess", "cfg.db" };
+        var svc = new VaultService(_root, _vault);
+
+        Assert.False(svc.MatchesLive("A")); // 未建档
+
+        await svc.BackupAsync("A", fp);
+        Assert.True(svc.MatchesLive("A")); // 建档后 live 即快照
+
+        File.WriteAllText(Path.Combine(_root, "cfg.db"), "CFG-A-CHANGED");
+        Assert.False(svc.MatchesLive("A")); // 2 文件中 1 个被改 → 命中 50% < 0.75
+    }
+
+    [Fact]
+    public async Task MatchesLive_live多出滚动文件仍匹配_删除快照文件则不匹配()
+    {
+        // leveldb 场景：建档后客户端运行会多出 000002.log（滚动新文件），识别仍应判定归属
+        WriteRoot("leveldb\\000001.log", "LOG-A");
+        WriteRoot("leveldb\\CURRENT", "C1");
+        var svc = new VaultService(_root, _vault);
+        await svc.BackupAsync("A", new[] { "leveldb" });
+
+        WriteRoot("leveldb\\000002.log", "NEW-ROLLED");
+        Assert.True(svc.MatchesLive("A")); // 多出的滚动文件不判负
+
+        File.Delete(Path.Combine(_root, "leveldb", "000001.log"));
+        Assert.False(svc.MatchesLive("A")); // 快照数据文件被删 → 命中 0% → 不属于该账号
+    }
+
+    [Fact]
+    public async Task MatchScore_忽略leveldb噪声文件_运行改写LOG仍接近全匹配()
+    {
+        // 真实场景：客户端每次运行都会改写 LOG / LOG.old，但它们与账号无关，评分应忽略
+        WriteRoot("leveldb\\000001.log", "DATA-A");
+        WriteRoot("leveldb\\CURRENT", "C1");
+        WriteRoot("leveldb\\MANIFEST-000001", "m1");
+        WriteRoot("leveldb\\LOG", "RUN1");
+        WriteRoot("leveldb\\LOG.old", "OLD1");
+        var svc = new VaultService(_root, _vault);
+        await svc.BackupAsync("A", new[] { "leveldb" });
+
+        // 模拟再次运行：LOG 内容变化、新增滚动文件，数据文件不变
+        File.WriteAllText(Path.Combine(_root, "leveldb", "LOG"), "RUN2-CHANGED");
+        File.WriteAllText(Path.Combine(_root, "leveldb", "LOG.old"), "OLD2-CHANGED");
+        WriteRoot("leveldb\\000002.log", "ROLLED");
+
+        var score = svc.MatchScore("A");
+        Assert.NotNull(score);
+        Assert.True(score!.Value > 0.9, $"期望忽略噪声后近全匹配，实际 {score:P0}");
+    }
+
+    [Fact]
+    public async Task MatchScore_数据文件被改写_评分显著下降()
+    {
+        WriteRoot("sess\\000001.log", "SESS-A");
+        WriteRoot("sess\\000002.log", "SESS-A2");
+        WriteRoot("cfg.db", "CFG-A");
+        var svc = new VaultService(_root, _vault);
+        await svc.BackupAsync("A", new[] { "sess", "cfg.db" });
+        Assert.Equal(1.0, svc.MatchScore("A"));
+
+        // 改掉全部 3 个数据文件
+        File.WriteAllText(Path.Combine(_root, "sess", "000001.log"), "SESS-B");
+        File.WriteAllText(Path.Combine(_root, "sess", "000002.log"), "SESS-B2");
+        File.WriteAllText(Path.Combine(_root, "cfg.db"), "CFG-B");
+        Assert.Equal(0.0, svc.MatchScore("A"));
+
+        // 无 meta 的账号返回 null
+        Assert.Null(svc.MatchScore("NOPE"));
+    }
+
+    [Fact]
+    public async Task 判别集_排除共享文件与运行痕迹_只保留账号特异文件()
+    {
+        // 两账号共享部分：同内容 leveldb 文件（无判别力）、以及不同建档时刻的 config.db（运行痕迹，必须排除）
+        WriteRoot("shared\\000001.ldb", "SAME");          // 两账号同内容 → 非判别
+        WriteRoot("config.db", "RUN-A");                   // 运行痕迹，建档时刻不同 → 必须排除
+        WriteRoot("onlyA\\000600.log", "A-TOKEN");         // 仅 A 有 → 判别
+        WriteRoot("onlyB\\000603.log", "B-TOKEN");         // 仅 B 有 → 判别
+        var svc = new VaultService(_root, _vault);
+        await svc.BackupAsync("A", new[] { "shared", "config.db", "onlyA" });
+        await svc.BackupAsync("B", new[] { "shared", "config.db", "onlyB" });
+
+        var disc = svc.BuildDiscriminantRels(new[] { "A", "B" });
+        Assert.Contains(@"onlyA\000600.log", disc);
+        Assert.Contains(@"onlyB\000603.log", disc);
+        Assert.DoesNotContain(@"shared\000001.ldb", disc);      // 全账号同内容
+        Assert.DoesNotContain("config.db", disc);               // 运行痕迹被排除
+    }
 }

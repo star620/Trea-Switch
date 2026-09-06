@@ -17,12 +17,20 @@
   <ItemGroup>
     <Compile Remove="TraeSwitch.Tests\**" />
     <Compile Remove="TraeSwitch.Probe\**" />
+    <Compile Remove="scratch_dbg\**" />
     <EmbeddedResource Remove="TraeSwitch.Tests\**" />
     <EmbeddedResource Remove="TraeSwitch.Probe\**" />
+    <EmbeddedResource Remove="scratch_dbg\**" />
     <Content Remove="TraeSwitch.Tests\**" />
     <Content Remove="TraeSwitch.Probe\**" />
+    <Content Remove="scratch_dbg\**" />
     <None Remove="TraeSwitch.Tests\**" />
     <None Remove="TraeSwitch.Probe\**" />
+    <None Remove="scratch_dbg\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TraeSwitch.Tests" />
   </ItemGroup>
 
 </Project>
