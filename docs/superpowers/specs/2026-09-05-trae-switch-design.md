@@ -45,17 +45,30 @@ TraeWork CN 桌面客户端（进程名 `TRAE SOLO CN.exe`，窗口名 "TraeWork
 > - 41 个变化中绝大多数为运行噪声：`monitor\parfait\*`（时间戳遥测）、
 >   `ModularData\*`（日志/会话 DB）、`ahanet\*`/`aha\*`、`solo-lite\thumbnail-assets\*`、
 >   `*.LOG`/`LOG.old`、`QuotaManager`、`languagepacks.json` 等。
-> - 登录态载体集中于 **7 个小文件**，已写入 `%APPDATA%\TraeSwitch\settings.json` 的
->   `Fingerprint`：`Local Storage\leveldb\000588.log`、
->   `Partitions\trae-webview\Local Storage\leveldb\000043.log`（trae-webview 为网页授权分区，
->   token 最可能落点）、`Partitions\trae-webview\Preferences`、
->   `Network\Network Persistent State`、`Local Storage\config.db`、
->   `User\globalStorage\storage.json`、`Session Storage\000237.log`。
+> - 登录态载体集中于 **6 个指纹条目（其中 3 个为目录）**，已写入
+>   `%APPDATA%\TraeSwitch\settings.json` 的 `Fingerprint`：
+>   `Local Storage\leveldb`（目录）、`Partitions\trae-webview\Local Storage\leveldb`（目录，
+>   trae-webview 为网页授权分区，token 最可能落点）、`Session Storage`（目录）、
+>   `Local Storage\config.db`、`Network\Network Persistent State`、`User\globalStorage\storage.json`。
+> - ⚠️ **指纹采用目录级而非单文件**：LevelDB 的 `*.log`/`*.ldb` 序号会随写入滚动，
+>   Phase 0 观察到的 `000588.log`/`000237.log` 等固定序号下一次切号并不相同；
+>   因此以「目录」为最小备份单位，恢复时先整删目标再整树写回，避免孤儿文件。
 > - `machineid`、`Local State`、`Network\Cookies*` 均未变化 → 登录态不在这些位置。
-> - 对应开放项 1、2：载体为"每账号一小撮小文件、其余共享"，冷切换只需替换上述少量文件，
->   无需整目录对拷。
-> - 对应开放项 3（同机多账号风控）待 2 账号 Pilot（≥1 周）验证；
+> - 对应开放项 1、2：载体为"每账号一小撮目录/文件、其余共享"，
+>   冷切换只需替换上述少量载体，无需整目录对拷。
+> - 对应开放项 3（同机多账号风控）：已进入 2 账号 Pilot（≥1 周）；
 >   对应开放项 4（`--user-data-dir` 参数）仍未验证，保持开放。
+>
+> ✅ **目录级建档与免验证码切换已于 2026-09-06 双账号真机验证通过。**
+>
+> 建档状态（`%LOCALAPPDATA%\TraeSwitch\vault\`）：
+> - `用户0612021494`（账号 A，主用，186 开头手机号）：37 个文件，目录结构完整；
+> - `用户61249542048`（账号 B，测试，139 开头手机号）：32 个文件，目录结构完整；
+> - 两者 `meta.json` 均含逐文件 SHA-256；B 的旧版「单文件级」残留备份已被目录级重做覆盖。
+> - `settings.json` 的 `Accounts` 已登记两个账号。
+>
+> 切换实测：A → B 与 B → A 冷切换均**免手机验证码**直接进入目标账号。
+> 说明目录级载体备份/整树恢复链路可靠（LevelDB 滚动日志无孤儿文件问题）。
 
 切换是否成立取决于"登录态载体"能否被整份备份并在账号间替换。**Phase 0 的目标是定位载体**，
 方法为"切号前后文件差异对比"。由于实验需要完全退出客户端、而用户正用该客户端与本工具对话，
@@ -127,8 +140,9 @@ Phase 0 顺延到用户某次"本来就准备切号/结束对话"时执行（一
 
 ## 9. 里程碑
 
-1. **Phase 0**：载体定位（顺延执行，一次性只读脚本）→ 确认 4 个开放项。
-2. **脚手架**：TraeSwitch 仓库/工程/测试骨架（含假载体冒烟）。
-3. **核心逻辑**：CarrierProfiler / VaultService / SwitcherService + 单测。
-4. **UI**：账号管理与切换界面。
-5. **Pilot**：真实载体接 2 账号试运行 ≥ 1 周，通过后收尾发布。
+1. ✅ **Phase 0**：载体定位完成（2026-09-06）→ 开放项 1/2 关闭；3 进入 Pilot 观察；4 未验证保持开放。
+2. ✅ **脚手架**：TraeSwitch 仓库/工程/测试骨架（含假载体冒烟）。
+3. ✅ **核心逻辑**：CarrierProfiler / VaultService（目录级）/ SwitcherService + 单测。
+4. ✅ **UI**：账号管理与切换界面。
+5. **Pilot**：2 账号建档完成、A↔B 免验证码切换已验证（2026-09-06）→
+   继续 ≥1 周稳定运行观察（风控/载体被改写），通过后收尾发布。
