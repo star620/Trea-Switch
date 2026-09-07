@@ -53,7 +53,7 @@ public class MainForm : Form
                 new ColumnHeader { Text = "状态", Width = 120 }
             }
         };
-        _accounts.DoubleClick += (_, _) => _ = DoVerifyAsync();
+        _accounts.DoubleClick += (_, _) => DoVerifyAsync();
         panel.Controls.Add(_accounts, 0, 0);
 
         var right = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(8, 0, 0, 0) };
@@ -98,7 +98,7 @@ public class MainForm : Form
         row.Controls.Add(MakeBtn("建档（自动识别+一键）", async () => await DoBackupAsync()));
         _switchBtn = MakeBtn("切换到选中账号", async () => await DoSwitchAsync());
         row.Controls.Add(_switchBtn);
-        row.Controls.Add(MakeBtn("校验选中账号", async () => await DoVerifyAsync()));
+        row.Controls.Add(MakeBtn("校验选中账号", DoVerifyAsync));
         row.Controls.Add(MakeBtn("删除选中账号", DoDelete));
         row.Controls.Add(MakeBtn("刷新列表", RefreshAccounts));
         row.Controls.Add(MakeBtn("检查更新", () => _ = CheckUpdateAsync(silentWhenLatest: false)));
@@ -463,7 +463,7 @@ public class MainForm : Form
         }
     }
 
-    private async Task DoVerifyAsync()
+    private void DoVerifyAsync()
     {
         var name = SelectedAccount;
         if (name == null) { Log("请先在列表中选中账号。"); return; }
@@ -472,17 +472,24 @@ public class MainForm : Form
             Log("无法校验：TRAE SOLO CN 正在运行，登录态文件被占用。请先完全退出客户端再点「校验」。");
             return;
         }
-        try
+        var info = _vault.GetInfo(name);
+        if (info == null) { Log("该账号尚未建档，无需校验。"); return; }
+
+        // 用与建档一致的判别识别来判定"当前 live 属于谁"，避免单账号严格比对在
+        // LevelDB 滚动后把"不是当前账号"和"过期"全误报成"校验失败"。
+        var current = IdentifyLiveAccount(out _);
+        if (current == null)
         {
-            var ok = await _vault.VerifyAsync(name, _settings.Data.Fingerprint);
-            var info = _vault.GetInfo(name);
-            Log(ok
-                ? $"账号 {name} vault 与 live 一致（载体 {info?.EntryCount ?? 0} 个，建档于 {info?.CreatedLocal:yyyy-MM-dd HH:mm}）。"
-                : $"账号 {name} vault 校验失败：客户端可能改写了登录态，请重新登录该账号后点「建档」更新备份。");
+            Log($"当前 live 无法匹配任何已建档案（通常是重新登录过、旧备份已过期）；「{name}」的备份未受影响，无需重新建档。");
+            return;
         }
-        catch (Exception ex)
+        if (current == name)
         {
-            Log("校验失败：" + ex.Message);
+            Log($"「{name}」为当前登录账号，vault 与 live 一致（载体 {info.EntryCount} 个，建档于 {info.CreatedLocal:yyyy-MM-dd HH:mm}）。");
+        }
+        else
+        {
+            Log($"「{name}」不是当前登录账号（当前为「{current}」），备份未受影响、无需重建。要校验它请先切到该账号。");
         }
     }
 
