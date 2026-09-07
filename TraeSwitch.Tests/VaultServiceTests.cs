@@ -201,4 +201,30 @@ public class VaultServiceTests : IDisposable
         Assert.DoesNotContain(@"shared\000001.ldb", disc);      // 全账号同内容
         Assert.DoesNotContain("config.db", disc);               // 运行痕迹被排除
     }
+
+    [Theory]
+    [InlineData("..")]
+    [InlineData(".")]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("a/../b")]
+    [InlineData("A:B")]
+    public void Sanitize_危险账号名_不逃逸vault根目录(string account)
+    {
+        var name = VaultService.Sanitize(account);
+        // 结果必须是 vaultRoot 下的单一合法子目录名（不含分隔符，不会是 "." / ".."）
+        Assert.NotEqual("..", name);
+        Assert.NotEqual(".", name);
+        Assert.False(name.Contains(Path.DirectorySeparatorChar));
+        Assert.False(name.Contains(Path.AltDirectorySeparatorChar));
+        Assert.Equal(name, Path.GetFileName(name));
+    }
+
+    [Theory]
+    [InlineData("用户0612021494")]
+    [InlineData("A")]
+    public void Sanitize_正常账号名_原样保留(string account)
+    {
+        Assert.Equal(account, VaultService.Sanitize(account));
+    }
 }

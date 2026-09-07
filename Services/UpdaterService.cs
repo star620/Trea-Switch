@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 
 namespace TraeSwitch.Services;
@@ -28,15 +29,70 @@ public static class UpdaterService
 
     public sealed record ReleaseInfo(string Tag, Version Version, string ExeUrl, long Size);
 
+    // GitHub 匿名 API 每小时最多 60 次；自动检查若紧跟频繁启动会很快耗尽配额（返回 403）。
+    // 用 1 小时磁盘缓存：自动（静默）检查在窗口内直接沿用上次结论，不反复打 API。
+    private static readonly TimeSpan CacheWindow = TimeSpan.FromHours(1);
+    private static string CacheFile => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "TraeSwitch", "update_check_cache.txt");
+
     /// <summary>远程 release 中发现比本地更新的版本时返回其信息；否则返回 null。</summary>
-    public static async Task<ReleaseInfo?> GetNewerAsync(CancellationToken ct = default)
+    public static async Task<ReleaseInfo?> GetNewerAsync(CancellationToken ct = default, bool useCache = true)
+    {
+        // 自动检查 + 1 小时内刚查过 → 不联网，沿用"已是最新"结论
+        if (useCache && IsCacheFresh()) return null;
+        try
+        {
+            return await FetchLatestAsync(ct);
+        }
+        finally
+        {
+            TouchCache();   // 无论成败都记录本次检查，避免高频启动反复打 API
+        }
+    }
+
+    private static bool IsCacheFresh()
+    {
+        try
+        {
+            if (!File.Exists(CacheFile)) return false;
+            var ts = long.Parse(File.ReadAllText(CacheFile).Trim());
+            if (ts <= 0) return false;
+            var last = new DateTime(ts, DateTimeKind.Utc);
+            return DateTime.UtcNow - last < CacheWindow;
+        }
+        catch { return false; }
+    }
+
+    private static void TouchCache()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(CacheFile)!);
+            File.WriteAllText(CacheFile, DateTime.UtcNow.Ticks.ToString());
+        }
+        catch { /* 缓存写失败不影响更新功能 */ }
+    }
+
+    private static async Task<ReleaseInfo?> FetchLatestAsync(CancellationToken ct)
     {
         using var resp = await Http.GetAsync(
             $"https://api.github.com/repos/{Repo}/releases/latest",
             HttpCompletionOption.ResponseHeadersRead, ct);
         // 非 2xx（403 限流/无 UA、5xx 等）不静默当"无新版"，抛出让上层如实提示
         if (!resp.IsSuccessStatusCode)
+        {
+            // 403 + X-RateLimit-Remaining=0：GitHub 匿名 API 每小时 60 次配额耗尽，给出恢复时间
+            if ((int)resp.StatusCode == 403 &&
+                resp.Headers.TryGetValues("X-RateLimit-Reset", out var resetVals) &&
+                long.TryParse(resetVals.FirstOrDefault(), out var resetUnix))
+            {
+                var wait = DateTimeOffset.FromUnixTimeSeconds(resetUnix).ToLocalTime();
+                throw new HttpRequestException(
+                    $"GitHub 更新限流（每小时最多 60 次），请到 {wait:HH:mm} 后再检查更新。");
+            }
             throw new HttpRequestException($"更新检查失败：HTTP {(int)resp.StatusCode}");
+        }
         var json = await resp.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -103,36 +159,38 @@ public static class UpdaterService
     }
 
     /// <summary>
-    /// 用独立 cmd 脚本异步应用更新：反复重试直到旧进程退出（文件解锁）后
-    /// 覆盖目标 exe、清理临时文件、启动新版。调用通常紧接着退出本程序。
+    /// 用独立 PowerShell 进程异步应用更新：反复重试直到旧进程退出（文件解锁）后
+    /// 覆盖目标 exe、清理临时 update，并启动新版。
     /// </summary>
+    /// <remarks>
+    /// 不用 .bat：cmd 用环境变量（set "DST=...") + chcp 传中文安装路径时会被
+    /// 二次编码破坏，导致 Start-Process 拿到损坏路径静默失败、程序不重启。
+    /// 改为把路径作为字符串字面量内嵌进 UTF-8(BOM) 的 .ps1，由 PowerShell
+    /// 原生按 Unicode 处理文件与 -File 参数，中文路径稳定可靠。
+    /// </remarks>
     public static void ApplyInBackground(string updateExe, string targetExe)
     {
-        var bat = Path.Combine(Path.GetTempPath(), $"apply_update_{Guid.NewGuid():N}.bat");
-        // 用 set "VAR=path" 语法（值不含引号），再以 "%VAR%" 引用，避免引号嵌套导致 copy 永远失败
-        var lines = new[]
-        {
-            "@echo off",
-            // 文件以 UTF-8(no BOM) 写入，chcp 65001 让 cmd 按 UTF-8 解析，避免中文安装路径乱码导致 copy 永久失败
-            "chcp 65001 >nul",
-            $"set \"SRC={updateExe}\"",
-            $"set \"DST={targetExe}\"",
-            ":loop",
-            "copy /y \"%SRC%\" \"%DST%\" >nul 2>&1",
-            "if not errorlevel 1 goto launch",
-            "timeout /t 2 /nobreak >nul",
-            "goto loop",
-            ":launch",
-            "del /q \"%SRC%\" 2>nul",
-            "del /q \"%~f0\" 2>nul",
-            "start \"\" \"%DST%\"",
-            "exit"
-        };
-        File.WriteAllLines(bat, lines);
+        var ps1 = Path.Combine(Path.GetTempPath(), $"apply_update_{Guid.NewGuid():N}.ps1");
+        // 60 次 × 200ms ≈ 12s，足够等旧进程退出、目标 exe 解锁
+        var body = $@"
+`$src = ""{updateExe}""
+`$dst = ""{targetExe}""
+`$tries = 60
+for (`$i = 0; `$i -lt `$tries; `$i++) {{
+  try {{ Copy-Item -Path `$src -Destination `$dst -Force -ErrorAction Stop; break }}
+  catch {{ Start-Sleep -Milliseconds 200 }}
+}}
+Remove-Item -Path `$src -Force -ErrorAction SilentlyContinue
+Start-Process -FilePath `$dst
+Remove-Item -Path `$MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+";
+        // BOM 必须带上：PowerShell 5.1 缺 BOM 会把 .ps1 当 ANSI 读，中文路径乱码
+        File.WriteAllText(ps1, body, new UTF8Encoding(true));
+
         var psi = new ProcessStartInfo
         {
-            FileName = "cmd.exe",
-            Arguments = $"/c \"{bat}\"",
+            FileName = "powershell.exe",
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{ps1}\"",
             WindowStyle = ProcessWindowStyle.Hidden,
             CreateNoWindow = true,
             UseShellExecute = false

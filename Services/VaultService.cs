@@ -261,10 +261,16 @@ public sealed class VaultService(string rootDir, string vaultRoot)
         return await Task.FromResult(true);
     }
 
-    private static string Sanitize(string account)
+    /// <summary>
+    /// 账号名 → 安全的 vault 目录名：无效文件名字符替换为 _。
+    /// . 不在 InvalidFileNameChars 里，必须单独拦截 "." 与 ".."，否则会逃逸出 vaultRoot。
+    /// </summary>
+    internal static string Sanitize(string account)
     {
         var bad = Path.GetInvalidFileNameChars();
-        return new string(account.Select(c => bad.Contains(c) ? '_' : c).ToArray());
+        var name = new string(account.Select(c => bad.Contains(c) ? '_' : c).ToArray());
+        if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..") name = "untitled";
+        return name;
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };

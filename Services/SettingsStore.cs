@@ -21,15 +21,31 @@ public sealed class SettingsStore
     {
         Directory.CreateDirectory(dir);
         FilePath = Path.Combine(dir, "settings.json");
-        Data = File.Exists(FilePath)
-            ? JsonSerializer.Deserialize<AppSettingsData>(File.ReadAllText(FilePath)) ?? new AppSettingsData()
-            : new AppSettingsData
+        Data = LoadData();
+    }
+
+    /// <summary>读配置；文件不存在、损坏或解析失败统一回退到默认值，避免启动即崩溃。</summary>
+    private AppSettingsData LoadData()
+    {
+        if (File.Exists(FilePath))
+        {
+            try
             {
-                RootDir = CarrierDefaults.DefaultUserDataDir,
-                ClientExe = CarrierDefaults.DefaultClientExe,
-                ProcessName = CarrierDefaults.DefaultProcessName,
-                Fingerprint = []
-            };
+                return JsonSerializer.Deserialize<AppSettingsData>(File.ReadAllText(FilePath))
+                    ?? new AppSettingsData();
+            }
+            catch
+            {
+                // 坏文件：回退默认值但不抛；下次 Save() 会用正常值覆盖它
+            }
+        }
+        return new AppSettingsData
+        {
+            RootDir = CarrierDefaults.DefaultUserDataDir,
+            ClientExe = CarrierDefaults.DefaultClientExe,
+            ProcessName = CarrierDefaults.DefaultProcessName,
+            Fingerprint = []
+        };
     }
 
     public void Save()

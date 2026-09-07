@@ -129,7 +129,8 @@ public class MainForm : Form
     {
         Log("正在检查更新…");
         UpdaterService.ReleaseInfo? rel = null;
-        try { rel = await UpdaterService.GetNewerAsync(); }
+        // 手动"检查更新"按钮走非静默（绕过缓存）；启动时自动静默检查用缓存，避免频繁启动耗尽 GitHub 配额
+        try { rel = await UpdaterService.GetNewerAsync(useCache: silentWhenLatest); }
         catch (Exception ex) { Log("检查更新失败：" + ex.Message); return; }
         if (rel == null)
         {

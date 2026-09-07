@@ -30,4 +30,26 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(CarrierDefaults.DefaultUserDataDir, store.Data.RootDir);
         Assert.Equal(CarrierDefaults.DefaultProcessName, store.Data.ProcessName);
     }
+
+    [Fact]
+    public void settings文件损坏_回退默认值_不抛异常()
+    {
+        // 预写坏文件（截断/乱写的 JSON 都会让 Deserialize 抛 JsonException）
+        var path = Path.Combine(_dir, "settings.json");
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(path, "{ 这不是合法JSON, accounts: [");
+        File.WriteAllText(path, "\ufeff" + "{ broken" + new string('x', 500));
+
+        // 构造不应抛异常，且回退为可用默认值
+        var store = new SettingsStore(_dir);
+        Assert.NotNull(store.Data);
+        Assert.Equal(CarrierDefaults.DefaultUserDataDir, store.Data.RootDir);
+        Assert.Equal(CarrierDefaults.DefaultProcessName, store.Data.ProcessName);
+
+        // 且仍可安全保存（用正常值覆盖坏文件）
+        store.Data.Accounts.Add("A");
+        store.Save();
+        var again = new SettingsStore(_dir);
+        Assert.Contains("A", again.Data.Accounts);
+    }
 }
