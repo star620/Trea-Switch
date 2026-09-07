@@ -29,10 +29,17 @@ jobs:
         run: dotnet test TraeSwitch.Tests\TraeSwitch.Tests.csproj -c Release
 
       - name: Publish (self-contained single-file, win-x64)
+        shell: pwsh
         run: |
+          # 版本取自 tag（如 v1.2.0 → 1.2.0）；手动触发（branch）时报 1.0.0
+          $v = "${{ github.ref_name }}"
+          if ($v -match '^v?([0-9]+\.[0-9]+\.[0-9]+)') { $ver = $matches[1] } else { $ver = "1.0.0" }
           dotnet publish TraeSwitch.csproj -c Release -r win-x64 `
             --self-contained true -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true -o dist
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:AssemblyVersion=$ver -p:FileVersion=$ver -p:InformationalVersion=$ver `
+            -o dist
+          Write-Host "Bundled version: $ver"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

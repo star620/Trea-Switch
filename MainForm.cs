@@ -124,7 +124,9 @@ public class MainForm : Form
         catch (Exception ex) { Log("检查更新失败：" + ex.Message); return; }
         if (rel == null)
         {
-            if (!silentWhenLatest) Log($"已是最新版本（v{UpdaterService.CurrentVersion}）。");
+            Log(silentWhenLatest
+                ? $"自动检查更新：已是最新（v{UpdaterService.CurrentVersion}）。"
+                : $"已是最新版本（v{UpdaterService.CurrentVersion}）。");
             return;
         }
 
@@ -146,7 +148,9 @@ public class MainForm : Form
             var update = await Task.Run(() => UpdaterService.DownloadAsync(rel.ExeUrl, destDir, p));
             Log("下载完成：即将退出并自动替换安装。");
             UpdaterService.ApplyInBackground(update, currentExe);
-            Close();
+            // 必须彻底退出进程以释放目标 exe 文件锁，否则后台脚本 copy 永远失败（update.exe 残留、不替换、不重启）
+            await Task.Delay(400);   // 给后台 cmd 一点启动缓冲
+            Environment.Exit(0);
         }
         catch (Exception ex)
         {
