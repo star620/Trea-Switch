@@ -109,11 +109,14 @@ public static class UpdaterService
     public static void ApplyInBackground(string updateExe, string targetExe)
     {
         var bat = Path.Combine(Path.GetTempPath(), $"apply_update_{Guid.NewGuid():N}.bat");
+        // 用 set "VAR=path" 语法（值不含引号），再以 "%VAR%" 引用，避免引号嵌套导致 copy 永远失败
         var lines = new[]
         {
             "@echo off",
-            "set SRC=" + Quote(updateExe),
-            "set DST=" + Quote(targetExe),
+            // 文件以 UTF-8(no BOM) 写入，chcp 65001 让 cmd 按 UTF-8 解析，避免中文安装路径乱码导致 copy 永久失败
+            "chcp 65001 >nul",
+            $"set \"SRC={updateExe}\"",
+            $"set \"DST={targetExe}\"",
             ":loop",
             "copy /y \"%SRC%\" \"%DST%\" >nul 2>&1",
             "if not errorlevel 1 goto launch",
@@ -136,6 +139,4 @@ public static class UpdaterService
         };
         Process.Start(psi);
     }
-
-    private static string Quote(string p) => "\"" + p.Replace("\"", "\"\"") + "\"";
 }
