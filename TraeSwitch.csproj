@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>TraeSwitch</RootNamespace>
     <AssemblyName>TraeSwitch</AssemblyName>
+    <Version>1.0.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <OutputPath>bin\TraeSwitch\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

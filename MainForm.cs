@@ -101,8 +101,60 @@ public class MainForm : Form
         row.Controls.Add(MakeBtn("校验选中账号", async () => await DoVerifyAsync()));
         row.Controls.Add(MakeBtn("删除选中账号", DoDelete));
         row.Controls.Add(MakeBtn("刷新列表", RefreshAccounts));
+        row.Controls.Add(MakeBtn("检查更新", () => _ = CheckUpdateAsync(silentWhenLatest: false)));
         return row;
     }
+
+    /// <summary>窗体显示后静默检查一次更新（有新版才提示，不打扰启动）。</summary>
+    protected override async void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        await CheckUpdateAsync(silentWhenLatest: true);
+    }
+
+    /// <summary>
+    /// 查询远程最新版并安装。silentWhenLatest=true（启动自动）时，无新版则静默不干扰；
+    /// 反之（手动点按钮）会明确提示"已是最新"。发现新版则弹窗确认后下载、退出并自动替换。
+    /// </summary>
+    private async Task CheckUpdateAsync(bool silentWhenLatest)
+    {
+        Log("正在检查更新…");
+        UpdaterService.ReleaseInfo? rel = null;
+        try { rel = await UpdaterService.GetNewerAsync(); }
+        catch (Exception ex) { Log("检查更新失败：" + ex.Message); return; }
+        if (rel == null)
+        {
+            if (!silentWhenLatest) Log($"已是最新版本（v{UpdaterService.CurrentVersion}）。");
+            return;
+        }
+
+        Log($"发现新版本 {rel.Tag}（当前 v{UpdaterService.CurrentVersion}）。");
+        var r = MessageBox.Show(
+            $"发现新版本 {rel.Tag}\n（当前 v{UpdaterService.CurrentVersion}，约 {Math.Max(1, (long)(rel.Size / 1048576.0))} MB）\n\n" +
+            "是否下载并自动安装？",
+            "发现新版本", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+        if (r != DialogResult.Yes) { Log("已取消更新。"); return; }
+
+        var currentExe = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(currentExe)) { Log("无法定位当前程序路径，更新中止。"); return; }
+        var destDir = Path.GetDirectoryName(currentExe)!;
+
+        Log("开始下载新版…（请稍候）");
+        try
+        {
+            var p = new Progress<int>(pct => { if (pct / 10 != _lastUpdatePct) { _lastUpdatePct = pct / 10; Log($"  下载 {pct}%…"); } });
+            var update = await Task.Run(() => UpdaterService.DownloadAsync(rel.ExeUrl, destDir, p));
+            Log("下载完成：即将退出并自动替换安装。");
+            UpdaterService.ApplyInBackground(update, currentExe);
+            Close();
+        }
+        catch (Exception ex)
+        {
+            Log("更新失败：" + ex.Message);
+        }
+    }
+
+    private int _lastUpdatePct = -1;
 
     private Button MakeBtn(string text, Action onClick)
     {
