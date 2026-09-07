@@ -118,6 +118,15 @@ public class MainForm : Form
     /// </summary>
     private async Task CheckUpdateAsync(bool silentWhenLatest)
     {
+        // 联网检查/下载/安装进行中禁止再次触发，避免并发下载相同新版本
+        if (_checkingUpdate) { Log("正在获取或安装更新，请稍候；完成后可再次检查。"); return; }
+        _checkingUpdate = true;
+        try { await CheckUpdateCoreAsync(silentWhenLatest); }
+        finally { _checkingUpdate = false; }
+    }
+
+    private async Task CheckUpdateCoreAsync(bool silentWhenLatest)
+    {
         Log("正在检查更新…");
         UpdaterService.ReleaseInfo? rel = null;
         try { rel = await UpdaterService.GetNewerAsync(); }
@@ -159,6 +168,7 @@ public class MainForm : Form
     }
 
     private int _lastUpdatePct = -1;
+    private bool _checkingUpdate;
 
     private Button MakeBtn(string text, Action onClick)
     {
