@@ -12,7 +12,15 @@ namespace TraeSwitch.Services;
 public static class UpdaterService
 {
     public const string Repo = "star620/Trea-Switch";
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly HttpClient Http = CreateHttp();
+
+    private static HttpClient CreateHttp()
+    {
+        var h = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        // GitHub REST API 对缺 User-Agent 的匿名请求会 403，必须带上
+        h.DefaultRequestHeaders.UserAgent.ParseAdd($"TraeSwitch/{CurrentVersion}");
+        return h;
+    }
 
     /// <summary>运行中程序的版本号（来自程序集，跟随 csproj &lt;Version&gt;）。</summary>
     public static Version CurrentVersion
@@ -26,7 +34,9 @@ public static class UpdaterService
         using var resp = await Http.GetAsync(
             $"https://api.github.com/repos/{Repo}/releases/latest",
             HttpCompletionOption.ResponseHeadersRead, ct);
-        if (!resp.IsSuccessStatusCode) return null;
+        // 非 2xx（403 限流/无 UA、5xx 等）不静默当"无新版"，抛出让上层如实提示
+        if (!resp.IsSuccessStatusCode)
+            throw new HttpRequestException($"更新检查失败：HTTP {(int)resp.StatusCode}");
         var json = await resp.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
