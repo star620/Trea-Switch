@@ -74,24 +74,20 @@ TRAETOOLS 最终用户许可协议（EULA）
             Padding = new Padding(12, 0, 0, 0)
         };
 
-        var body = new TextBox
+        // 底部容器：容纳复选框 + 按钮，停靠顺序从上到下保证布局正确
+        var bottomPanel = new Panel
         {
-            Dock = DockStyle.Fill,
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            Text = EulaText,
-            BackColor = Color.FromArgb(250, 250, 250),
-            Font = new Font("Microsoft YaHei UI", 9.5f),
-            WordWrap = false
+            Dock = DockStyle.Bottom,
+            Height = 90
         };
 
         var cbPanel = new FlowLayoutPanel
         {
-            Dock = DockStyle.Bottom,
-            Height = 34,
+            Dock = DockStyle.Top,
+            Height = 38,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
+            WrapContents = false,
+            Padding = new Padding(8, 4, 0, 0)
         };
         _chkAgree.Text = "我已阅读并同意上述协议，且确认本软件仅用于管理本人拥有的账号";
         _chkAgree.AutoSize = true;
@@ -109,15 +105,35 @@ TRAETOOLS 最终用户许可协议（EULA）
         _btnOk.Text = "同意并继续";
         _btnOk.Enabled = false;
         _btnOk.Width = 130;
+        _btnOk.Height = 36;
         _btnOk.Click += (_, _) => DialogResult = DialogResult.OK;
-        var btnNo = new Button { Text = "不同意并退出", Width = 130 };
+        var btnNo = new Button { Text = "不同意并退出", Width = 130, Height = 36 };
         btnNo.Click += (_, _) => DialogResult = DialogResult.Cancel;
         btnPanel.Controls.Add(_btnOk);
         btnPanel.Controls.Add(btnNo);
 
-        Controls.Add(body);
-        Controls.Add(cbPanel);
-        Controls.Add(btnPanel);
+        bottomPanel.Controls.Add(cbPanel);
+        bottomPanel.Controls.Add(btnPanel);
+
+        // 使用 Label + AutoScroll 面板确保文字正确换行
+        var bodyContainer = new Panel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            Padding = new Padding(12, 8, 12, 8)
+        };
+        var body = new Label
+        {
+            AutoSize = true,
+            Text = EulaText,
+            BackColor = Color.FromArgb(250, 250, 250),
+            Font = new Font("Microsoft YaHei UI", 9.5f),
+            Dock = DockStyle.Top
+        };
+        bodyContainer.Controls.Add(body);
+
+        Controls.Add(bodyContainer);
+        Controls.Add(bottomPanel);
         Controls.Add(title);
         AcceptButton = _btnOk;
         CancelButton = btnNo;
