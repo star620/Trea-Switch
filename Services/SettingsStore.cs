@@ -9,6 +9,8 @@ public sealed class AppSettingsData
     public string ClientExe { get; set; } = "";
     public string ProcessName { get; set; } = "";
     public List<string> Fingerprint { get; set; } = [];
+    /// <summary>是否已同意首次启动的用户协议（EULA）。同意后不再弹出。</summary>
+    public bool EulaAccepted { get; set; }
 }
 
 /// <summary>settings.json 读写；目录不存在自动创建。文件不存在时用默认值。</summary>

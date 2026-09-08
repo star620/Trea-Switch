@@ -36,6 +36,17 @@ internal static class Program
 
         ApplicationConfiguration.Initialize();
         var settings = new SettingsStore(CarrierDefaults.SettingsDir);
+        // 首次启动须同意用户协议；不同意直接退出，同意后写入 settings 不再询问
+        if (!settings.Data.EulaAccepted)
+        {
+            using (var eula = new EulaForm())
+            {
+                if (eula.ShowDialog() != DialogResult.OK)
+                    return;
+            }
+            settings.Data.EulaAccepted = true;
+            settings.Save();
+        }
         Application.Run(new MainForm(settings));
     }
 
